@@ -92,12 +92,18 @@ func NewRunner(config Config) (*runner, error) {
 
 // Start initializes the River client and starts workers.
 // Must be called before any workflow operations.
+// For insert-only mode (no workers), use StartInsertOnly instead.
 func (r *runner) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.started {
 		return ErrRunnerAlreadyStarted
+	}
+
+	// If workers == 0, use insert-only mode
+	if r.config.Workers == 0 {
+		return r.startInsertOnly(ctx)
 	}
 
 	// Create River workers
@@ -117,8 +123,8 @@ func (r *runner) Start(ctx context.Context) error {
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: r.config.Workers},
 		},
-		Workers:     workers,
-		JobTimeout:  r.config.JobTimeout,
+		Workers:      workers,
+		JobTimeout:   r.config.JobTimeout,
 		ErrorHandler: &errorHandler{logger: r.logger},
 	})
 	if err != nil {
@@ -134,6 +140,22 @@ func (r *runner) Start(ctx context.Context) error {
 
 	r.started = true
 	r.logger.Info("runner started", "workers", r.config.Workers)
+
+	return nil
+}
+
+// startInsertOnly creates a River client that can only insert jobs, not process them.
+// This is used for API servers that dispatch workflows but don't run workers.
+func (r *runner) startInsertOnly(ctx context.Context) error {
+	// Create insert-only River client (no workers, no job processing)
+	client, err := river.NewClient(riverpgxv5.New(r.pool), &river.Config{})
+	if err != nil {
+		return fmt.Errorf("create insert-only river client: %w", err)
+	}
+
+	r.client = client
+	r.started = true
+	r.logger.Info("runner started in insert-only mode")
 
 	return nil
 }
