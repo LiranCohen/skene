@@ -654,7 +654,10 @@ func TestMultipleSignals(t *testing.T) {
 	for _, e := range output1.NewEvents {
 		if e.Type == event.EventSignalWaiting {
 			var data event.SignalWaitingData
-			json.Unmarshal(e.Data, &data)
+			if err := json.Unmarshal(e.Data, &data); err != nil {
+				t.Errorf("Failed to unmarshal signal.waiting data: %v", err)
+				continue
+			}
 			if data.SignalName == "approval" {
 				approvalWaiting = true
 			}

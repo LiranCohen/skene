@@ -66,19 +66,19 @@ func TestConfig_withDefaults(t *testing.T) {
 		wantLoggerIsNop bool
 	}{
 		{
-			name:            "all defaults applied",
-			config:          Config{},
+			name:            "all defaults applied (Workers=-1 means auto)",
+			config:          Config{Workers: -1}, // -1 is the default, means use NumCPU
 			wantWorkers:     runtime.NumCPU(),
 			wantJobTimeout:  DefaultJobTimeout,
 			wantShutdown:    DefaultShutdownTimeout,
 			wantLoggerIsNop: true,
 		},
 		{
-			name: "zero workers gets default",
+			name: "zero workers preserved (insert-only mode)",
 			config: Config{
 				Workers: 0,
 			},
-			wantWorkers:     runtime.NumCPU(),
+			wantWorkers:     0, // 0 means insert-only mode
 			wantJobTimeout:  DefaultJobTimeout,
 			wantShutdown:    DefaultShutdownTimeout,
 			wantLoggerIsNop: true,
@@ -106,6 +106,7 @@ func TestConfig_withDefaults(t *testing.T) {
 		{
 			name: "custom job timeout preserved",
 			config: Config{
+				Workers:    -1, // Use default workers
 				JobTimeout: 2 * time.Minute,
 			},
 			wantWorkers:     runtime.NumCPU(),
@@ -116,6 +117,7 @@ func TestConfig_withDefaults(t *testing.T) {
 		{
 			name: "custom shutdown timeout preserved",
 			config: Config{
+				Workers:         -1, // Use default workers
 				ShutdownTimeout: 5 * time.Minute,
 			},
 			wantWorkers:     runtime.NumCPU(),
@@ -126,7 +128,8 @@ func TestConfig_withDefaults(t *testing.T) {
 		{
 			name: "custom logger preserved",
 			config: Config{
-				Logger: &testLogger{},
+				Workers: -1, // Use default workers
+				Logger:  &testLogger{},
 			},
 			wantWorkers:     runtime.NumCPU(),
 			wantJobTimeout:  DefaultJobTimeout,
@@ -172,13 +175,13 @@ func TestConfig_withDefaults(t *testing.T) {
 
 func TestConfig_withDefaults_DoesNotMutateOriginal(t *testing.T) {
 	original := Config{
-		Workers: 0, // Will be changed to NumCPU in withDefaults
+		Workers: -1, // Will be changed to NumCPU in withDefaults
 	}
 
 	_ = original.withDefaults()
 
-	if original.Workers != 0 {
-		t.Errorf("Original config was mutated: Workers = %d, want 0", original.Workers)
+	if original.Workers != -1 {
+		t.Errorf("Original config was mutated: Workers = %d, want -1", original.Workers)
 	}
 }
 
@@ -194,8 +197,8 @@ func TestNoopLogger(t *testing.T) {
 }
 
 func TestDefaultConstants(t *testing.T) {
-	if DefaultWorkers != 0 {
-		t.Errorf("DefaultWorkers = %d, want 0", DefaultWorkers)
+	if DefaultWorkers != -1 {
+		t.Errorf("DefaultWorkers = %d, want -1 (auto-detect)", DefaultWorkers)
 	}
 	if DefaultJobTimeout != 30*time.Second {
 		t.Errorf("DefaultJobTimeout = %v, want %v", DefaultJobTimeout, 30*time.Second)

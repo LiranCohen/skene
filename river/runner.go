@@ -202,7 +202,7 @@ func (r *runner) StartWorkflow(ctx context.Context, name string, input json.RawM
 	if err != nil {
 		return "", fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	runID, err := r.StartWorkflowTx(ctx, tx, name, input, StartOptions{})
 	if err != nil {
@@ -335,7 +335,7 @@ func (r *runner) SendSignal(ctx context.Context, runID, signalName string, paylo
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Append signal.received event
 	receivedData, err := json.Marshal(event.SignalReceivedData{
@@ -433,7 +433,7 @@ func (r *runner) CancelWorkflow(ctx context.Context, runID, reason string) error
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Append workflow.cancelled event
 	cancelledData, err := json.Marshal(event.WorkflowCancelledData{

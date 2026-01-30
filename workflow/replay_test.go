@@ -1649,8 +1649,12 @@ func TestReplayer_RecordChildSpawned(t *testing.T) {
 			}
 			// Compare by unmarshaling both to verify JSON equivalence
 			var gotInput, wantInput map[string]any
-			json.Unmarshal(data.Input, &gotInput)
-			json.Unmarshal(inputJSON, &wantInput)
+			if err := json.Unmarshal(data.Input, &gotInput); err != nil {
+				t.Errorf("Failed to unmarshal data.Input: %v", err)
+			}
+			if err := json.Unmarshal(inputJSON, &wantInput); err != nil {
+				t.Errorf("Failed to unmarshal inputJSON: %v", err)
+			}
 			gotInputJSON, _ := json.Marshal(gotInput)
 			wantInputJSON, _ := json.Marshal(wantInput)
 			if string(gotInputJSON) != string(wantInputJSON) {
@@ -1731,8 +1735,12 @@ func TestReplayer_RecordChildCompleted(t *testing.T) {
 			} else {
 				// Compare by unmarshaling both to verify JSON equivalence
 				var gotOutput, wantOutput map[string]any
-				json.Unmarshal(data.Output, &gotOutput)
-				json.Unmarshal(outputJSON, &wantOutput)
+				if err := json.Unmarshal(data.Output, &gotOutput); err != nil {
+					t.Errorf("Failed to unmarshal data.Output: %v", err)
+				}
+				if err := json.Unmarshal(outputJSON, &wantOutput); err != nil {
+					t.Errorf("Failed to unmarshal outputJSON: %v", err)
+				}
 				gotOutputJSON, _ := json.Marshal(gotOutput)
 				wantOutputJSON, _ := json.Marshal(wantOutput)
 				if string(gotOutputJSON) != string(wantOutputJSON) {
@@ -1907,8 +1915,12 @@ func TestReplayer_RecordMapCompleted(t *testing.T) {
 			}
 			// Compare by unmarshaling both to verify JSON equivalence
 			var gotResults, wantResults []map[string]any
-			json.Unmarshal(data.Results, &gotResults)
-			json.Unmarshal(resultsJSON, &wantResults)
+			if err := json.Unmarshal(data.Results, &gotResults); err != nil {
+				t.Errorf("Failed to unmarshal data.Results: %v", err)
+			}
+			if err := json.Unmarshal(resultsJSON, &wantResults); err != nil {
+				t.Errorf("Failed to unmarshal resultsJSON: %v", err)
+			}
 			gotResultsJSON, _ := json.Marshal(gotResults)
 			wantResultsJSON, _ := json.Marshal(wantResults)
 			if string(gotResultsJSON) != string(wantResultsJSON) {

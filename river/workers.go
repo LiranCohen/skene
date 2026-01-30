@@ -35,7 +35,7 @@ func (w *workflowWorker) Work(ctx context.Context, job *river.Job[WorkflowJobArg
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Load events
 	var events []event.Event
@@ -230,7 +230,7 @@ func (w *signalTimeoutWorker) Work(ctx context.Context, job *river.Job[SignalTim
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Append signal.timeout event
 	timeoutData, err := json.Marshal(event.SignalTimeoutData{
@@ -319,7 +319,7 @@ func (w *scheduledStartWorker) Work(ctx context.Context, job *river.Job[Schedule
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	runID, err := r.StartWorkflowTx(ctx, tx, args.WorkflowName, args.Input, opts)
 	if err != nil {

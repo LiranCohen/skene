@@ -352,12 +352,12 @@ func TestRegistry_Concurrent(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func() {
 			for j := 0; j < 100; j++ {
-				r.Get("workflow")
-				r.GetVersion("workflow", "v1")
-				r.Names()
-				r.Count()
-				r.Versions("workflow")
-				r.LatestVersion("workflow")
+				_, _ = r.Get("workflow")
+				_, _ = r.GetVersion("workflow", "v1")
+				_ = r.Names()
+				_ = r.Count()
+				_, _ = r.Versions("workflow")
+				_, _ = r.LatestVersion("workflow")
 			}
 			done <- true
 		}()

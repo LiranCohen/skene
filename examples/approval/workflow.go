@@ -261,10 +261,7 @@ var Level2Approval = workflow.NewStep("level2-approval", func(ctx workflow.Conte
 
 	// Skip if not needed
 	if level1.NextAction != "level2" {
-		return Level2Output{
-			Approval:   level1.Approval,
-			NextAction: level1.NextAction,
-		}, nil
+		return Level2Output(level1), nil
 	}
 
 	timeout := getApprovalTimeout(input.Priority)
@@ -333,10 +330,7 @@ var Level3Approval = workflow.NewStep("level3-approval", func(ctx workflow.Conte
 
 	// Skip if not needed
 	if level2.NextAction != "level3" {
-		return Level3Output{
-			Approval:   level2.Approval,
-			NextAction: level2.NextAction,
-		}, nil
+		return Level3Output(level2), nil
 	}
 
 	timeout := getApprovalTimeout(input.Priority)

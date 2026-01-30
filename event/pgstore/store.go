@@ -37,7 +37,7 @@ func (s *Store) AppendBatch(ctx context.Context, events []event.Event) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if err := s.appendBatchInTx(ctx, tx, events); err != nil {
 		return err
@@ -115,7 +115,7 @@ func (s *Store) appendBatchInTx(ctx context.Context, tx pgx.Tx, events []event.E
 	}
 
 	results := tx.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 
 	for range events {
 		_, err := results.Exec()
@@ -316,8 +316,8 @@ func parseEventType(s string) event.EventType {
 // isDuplicateKeyError checks if the error is a PostgreSQL duplicate key violation.
 func isDuplicateKeyError(err error) bool {
 	// PostgreSQL error code 23505 is unique_violation
-	return err != nil && (errors.Is(err, pgx.ErrNoRows) == false &&
-		(containsString(err.Error(), "23505") || containsString(err.Error(), "duplicate key")))
+	return err != nil && !errors.Is(err, pgx.ErrNoRows) &&
+		(containsString(err.Error(), "23505") || containsString(err.Error(), "duplicate key"))
 }
 
 func containsString(s, substr string) bool {

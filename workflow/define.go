@@ -87,7 +87,7 @@ func (w *workflowContextAdapter) getInput() json.RawMessage {
 
 // getOutput implements outputAccessor for Step[T].Output().
 func (w *workflowContextAdapter) getOutput(stepName string) (json.RawMessage, bool) {
-	return w.executionContext.GetOutput(stepName)
+	return w.GetOutput(stepName)
 }
 
 // getReplayer implements replayerAccessor for workflow.Run().

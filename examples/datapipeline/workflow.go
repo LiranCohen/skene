@@ -303,8 +303,8 @@ var TransformData = workflow.NewStep("transform-data", func(ctx workflow.Context
 	}
 
 	transformer := GetTransformer(ctx)
-	outputRecords := merged.TotalRecords
-	droppedRecords := 0
+	var outputRecords int
+	var droppedRecords int
 
 	if transformer != nil {
 		// In real implementation, would pass actual records

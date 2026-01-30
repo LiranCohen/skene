@@ -41,10 +41,6 @@ var chargeCrypto = NewStep("charge-crypto", func(ctx Context) (CryptoOutput, err
 	return CryptoOutput{WalletTx: "crypto-tx-456", Method: "crypto"}, nil
 })
 
-var shipOrder = NewStep("ship", func(ctx Context) (ShipOutput, error) {
-	return ShipOutput{TrackingNumber: "TRACK123"}, nil
-})
-
 func TestBranch_BasicStructure(t *testing.T) {
 	tests := []struct {
 		name       string

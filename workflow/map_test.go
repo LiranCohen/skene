@@ -348,7 +348,10 @@ func TestRun_MultipleChildren(t *testing.T) {
 	for _, e := range output.NewEvents {
 		if e.Type == event.EventChildSpawned {
 			var data event.ChildSpawnedData
-			json.Unmarshal(e.Data, &data)
+			if err := json.Unmarshal(e.Data, &data); err != nil {
+				t.Errorf("Failed to unmarshal child.spawned data: %v", err)
+				continue
+			}
 			if childRunIDs[data.ChildRunID] {
 				t.Errorf("Duplicate child RunID: %s", data.ChildRunID)
 			}
@@ -376,7 +379,9 @@ func TestRun_ChildWithMultipleSteps(t *testing.T) {
 		execFunc: func(ctx context.Context, ec *executionContext) (any, error) {
 			inputJSON, _ := json.Marshal(ec.Input())
 			var input int
-			json.Unmarshal(inputJSON, &input)
+			if err := json.Unmarshal(inputJSON, &input); err != nil {
+				return nil, err
+			}
 			return Step1Output{Value: input}, nil
 		},
 	}
@@ -386,7 +391,9 @@ func TestRun_ChildWithMultipleSteps(t *testing.T) {
 		execFunc: func(ctx context.Context, ec *executionContext) (any, error) {
 			output, _ := ec.GetOutput("step1")
 			var s1 Step1Output
-			json.Unmarshal(output, &s1)
+			if err := json.Unmarshal(output, &s1); err != nil {
+				return nil, err
+			}
 			return FinalOutput{Doubled: s1.Value * 2}, nil
 		},
 	}
@@ -760,7 +767,9 @@ func TestMap_PartialFailure(t *testing.T) {
 			execFunc: func(ctx context.Context, ec *executionContext) (any, error) {
 				inputJSON, _ := json.Marshal(ec.Input())
 				var input int
-				json.Unmarshal(inputJSON, &input)
+				if err := json.Unmarshal(inputJSON, &input); err != nil {
+					return nil, err
+				}
 				if input == failOnIndex {
 					return nil, childErr
 				}
@@ -841,7 +850,9 @@ func TestMap_WithMaxConcurrency(t *testing.T) {
 				// Do work (simulated)
 				inputJSON, _ := json.Marshal(ec.Input())
 				var input int
-				json.Unmarshal(inputJSON, &input)
+				if err := json.Unmarshal(inputJSON, &input); err != nil {
+					return nil, err
+				}
 
 				// Decrement concurrent counter
 				concurrent.Add(-1)
@@ -915,7 +926,9 @@ func TestMap_ReplaySkipsCompletedChildren(t *testing.T) {
 				executionCount++
 				inputJSON, _ := json.Marshal(ec.Input())
 				var input int
-				json.Unmarshal(inputJSON, &input)
+				if err := json.Unmarshal(inputJSON, &input); err != nil {
+					return nil, err
+				}
 				return ItemOutput{Value: input * 10}, nil
 			},
 		},
@@ -1055,7 +1068,10 @@ func TestMap_UniqueChildRunIDs(t *testing.T) {
 	for _, e := range output.NewEvents {
 		if e.Type == event.EventChildSpawned {
 			var data event.ChildSpawnedData
-			json.Unmarshal(e.Data, &data)
+			if err := json.Unmarshal(e.Data, &data); err != nil {
+				t.Errorf("Failed to unmarshal child.spawned data: %v", err)
+				continue
+			}
 			if childRunIDs[data.ChildRunID] {
 				t.Errorf("Duplicate child RunID: %s", data.ChildRunID)
 			}
@@ -1165,7 +1181,9 @@ func TestMap_NestedMap(t *testing.T) {
 
 			inputJSON, _ := json.Marshal(ec.Input())
 			var input []int
-			json.Unmarshal(inputJSON, &input)
+			if err := json.Unmarshal(inputJSON, &input); err != nil {
+				return nil, err
+			}
 
 			innerResults, err := Map[int, InnerOutput](wctx, input, innerWf)
 			if err != nil {

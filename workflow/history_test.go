@@ -511,7 +511,9 @@ func TestHistory_MultipleSteps(t *testing.T) {
 		t.Fatal("GetOutput(validate) returned ok=false")
 	}
 	var valid map[string]bool
-	json.Unmarshal(validateOutput, &valid)
+	if err := json.Unmarshal(validateOutput, &valid); err != nil {
+		t.Fatalf("failed to unmarshal validate output: %v", err)
+	}
 	if !valid["valid"] {
 		t.Error("validate output should have valid=true")
 	}
