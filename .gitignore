@@ -1,0 +1,52 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+/bin/
+/dist/
+
+# Local environment
+.env
+.env.local
+
+# Debug files
+debug
+__debug_bin
+
+# Ralph and AI tool files
+.ralph/
+.claude/
+ralph.yml
+PROMPT.md
+
+# Node artifacts (not needed for Go)
+package-lock.json
+node_modules/

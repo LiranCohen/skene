@@ -1,0 +1,589 @@
+# Skene Dashboard Integration
+#
+# Pattern: Separation of Concerns (Rob Pike Philosophy)
+#
+# "The bigger the interface, the weaker the abstraction."
+# "A little copying is better than a little dependency."
+# "Clear is better than clever."
+#
+# This preset creates dashboard support WITHOUT polluting Skene's core.
+# The core is an event-sourced execution engine. Querying, projecting,
+# and displaying events is someone else's job.
+#
+# Usage:
+#   ralph run --config presets/skene-dashboard.yml
+#
+# Output:
+#   - project/  package with pure projection functions
+#   - query/    package with store query interfaces (separate from EventStore)
+#   - Internal improvements to Event.Metadata usage
+
+event_loop:
+  starting_event: "analyze.gaps"
+  completion_promise: "DASHBOARD_SUPPORT_COMPLETE"
+  max_iterations: 80
+  max_runtime_seconds: 14400
+  checkpoint_interval: 5
+  prompt: |
+    ## Objective
+
+    Create dashboard support for Skene WITHOUT polluting the core.
+
+    ## Source Document
+
+    Read the gaps analysis: `docs/design/SKENE_DASHBOARD_GAPS.md`
+
+    ## The Gaps (Summary)
+
+    | # | Gap | Current State |
+    |---|-----|---------------|
+    | 1 | Run queries with pagination/filtering | RunFilter exists, needs verification |
+    | 2 | Step invocation data (history, timing, attempts) | Data in events, needs projection |
+    | 3 | Step counts batch query | Not exposed |
+    | 4 | Step logs (structured logging per step) | Not in event model |
+    | 5 | Child workflow support (parent tracking, queries) | Events exist, needs projection |
+    | 6 | Entity correlation (entityId, entityType) | Not in core |
+    | 7 | UI events for real-time updates | LoadSince exists |
+    | 8 | Retry from step / skip step | Complex, not implemented |
+
+    ## Philosophy (Rob Pike)
+
+    > "The bigger the interface, the weaker the abstraction."
+
+    Skene's job: Execute workflows, record events.
+    Dashboard's job: Query, project, display events.
+
+    ## Deliverables
+
+    1. `project/` package - Pure functions: `[]event.Event` → dashboard structs
+    2. `query/` package - Optional interfaces for store extensions
+    3. Documentation on `Event.Metadata` conventions for app metadata
+    4. Updated `docs/design/SKENE_DASHBOARD_GAPS.md` showing solutions
+
+    ## What NOT To Do
+
+    - Don't add methods to EventStore for dashboard queries
+    - Don't add EntityID/EntityType to Event struct
+    - Don't mix logging with event sourcing
+    - Don't add callbacks when LoadSince polling works
+
+    ## Key Files
+
+    - `docs/design/SKENE_DASHBOARD_GAPS.md` - The gaps to address
+    - `event/event.go` - Event struct (has Metadata field)
+    - `event/store.go` - EventStore interface (keep it small)
+    - `event/data.go` - Event payload structs
+    - `workflow/context.go` - Child context already exists
+    - `workflow/history.go` - History indexing patterns
+
+cli:
+  backend: "claude"
+
+core:
+  specs_dir: "./specs/"
+
+memories:
+  enabled: true
+  inject: auto
+  budget: 2500
+
+tasks:
+  enabled: true
+
+hats:
+  philosopher:
+    name: "Pike Philosopher"
+    description: "Evaluates each gap through Rob Pike's lens. Decides what belongs where."
+    triggers: ["analyze.gaps", "design.rejected"]
+    publishes: ["design.ready"]
+    instructions: |
+      ## PHILOSOPHER MODE
+
+      You are channeling Rob Pike.
+
+      ### FIRST: Read the Gaps Document
+
+      ```bash
+      cat docs/design/SKENE_DASHBOARD_GAPS.md
+      ```
+
+      Study each gap carefully. Understand what the dashboard actually needs.
+
+      ### THEN: For Each Gap, Ask Three Questions
+
+      1. **Is this a workflow concern or a query concern?**
+         - Workflow: Execution, events, replay, determinism
+         - Query: Filtering, aggregation, pagination, display
+
+      2. **Does this belong in the interface or the implementation?**
+         - Interface: Small, focused, stable contracts
+         - Implementation: Database optimizations, caching, batching
+
+      3. **Is this core state or application metadata?**
+         - Core: RunID, StepName, Sequence, Output
+         - Metadata: EntityID, EntityType, TraceID, custom labels
+
+      ### Categorize Each Gap
+
+      Read `docs/design/SKENE_DASHBOARD_GAPS.md` and categorize:
+
+      ```
+      | Gap | Category | Where It Belongs |
+      |-----|----------|------------------|
+      | Run queries | Query concern | query/ package or store impl |
+      | Step invocations | Projection | project/ package |
+      | Step counts | Projection | project/ package |
+      | Step logs | SEPARATE CONCERN | Logger interface, not events |
+      | Child workflows | ALREADY EXISTS | Projection from events |
+      | Entity correlation | App metadata | Event.Metadata field |
+      | UI events | ALREADY EXISTS | LoadSince() polling |
+      | Retry from step | Complex | Fork primitive (new run) |
+      ```
+
+      ### Record Decisions
+
+      ```bash
+      ralph tools memory add "philosophy: [gap] is [category] because [reason]" -t decision
+      ```
+
+      ### DON'T
+
+      - ❌ Add methods to EventStore for dashboard queries
+      - ❌ Add application-specific fields to Event struct
+      - ❌ Mix logging with event sourcing
+      - ❌ Add callbacks or channels when polling works
+
+      ### Output
+
+      Write design decisions to `.ralph/specs/dashboard-design.md`:
+
+      ```markdown
+      # Dashboard Support Design
+
+      ## Philosophy
+
+      Skene's job: Execute workflows, record events.
+      Dashboard's job: Query, project, display events.
+
+      ## Package Structure
+
+      ### project/ - Pure Projection Functions
+      [list functions]
+
+      ### query/ - Query Interfaces (Separate from EventStore)
+      [list interfaces]
+
+      ### Internal Changes
+      [list any core changes, should be minimal]
+
+      ## Rejected Approaches
+      [what we're NOT doing and why]
+      ```
+
+      Publish `design.ready` when complete.
+
+  architect:
+    name: "Interface Architect"
+    description: "Designs small, focused interfaces following Go idioms."
+    triggers: ["design.ready"]
+    publishes: ["interfaces.ready", "design.rejected"]
+    instructions: |
+      ## ARCHITECT MODE
+
+      Design interfaces. Remember: "The bigger the interface, the weaker the abstraction."
+
+      ### Read First
+
+      - `.ralph/specs/dashboard-design.md`
+      - `event/store.go` (current EventStore interface)
+      - `event/event.go` (Event struct)
+
+      ### Design Principles
+
+      1. **Accept interfaces, return concrete types**
+      2. **Keep interfaces small** - 1-3 methods max
+      3. **Composition over configuration**
+      4. **Make the zero value useful**
+
+      ### project/ Package Design
+
+      Pure functions that transform `[]event.Event` → dashboard structs:
+
+      ```go
+      // No interfaces needed. Just functions.
+      package project
+
+      func StepInvocations(events []event.Event) []StepInvocation
+      func ChildWorkflows(events []event.Event) []ChildInfo
+      func StepCounts(events []event.Event) StepCounts
+      func WorkflowStatus(events []event.Event) Status
+      func Timeline(events []event.Event) []TimelineEntry
+      ```
+
+      Why functions, not methods?
+      - Pure: same input → same output
+      - Testable: no mocks needed
+      - Composable: pipe them together
+
+      ### query/ Package Design
+
+      If the store needs query extensions, use a SEPARATE interface:
+
+      ```go
+      package query
+
+      // RunLister is OPTIONAL. Stores can implement if they want.
+      // The dashboard can also build this from EventStore.Load().
+      type RunLister interface {
+          ListRuns(ctx context.Context, opts ListOptions) ([]RunSummary, error)
+      }
+
+      // RunCounter is OPTIONAL for pagination.
+      type RunCounter interface {
+          CountRuns(ctx context.Context, opts ListOptions) (int, error)
+      }
+
+      // ListOptions uses functional options pattern
+      type ListOptions struct {
+          WorkflowName string
+          Status       Status
+          Limit        int
+          Offset       int
+          // NO EntityID, EntityType here - that's app metadata
+      }
+      ```
+
+      ### What NOT to Design
+
+      - ❌ No logging interface in Skene (use slog or custom)
+      - ❌ No entity correlation in core (use Event.Metadata)
+      - ❌ No batch methods in EventStore (store implementation detail)
+      - ❌ No real-time callbacks (LoadSince is enough)
+
+      ### Validate Design
+
+      Check against these principles:
+      - [ ] Can I explain each interface in one sentence?
+      - [ ] Does each interface have ≤3 methods?
+      - [ ] Are there no application-specific concepts in core?
+      - [ ] Could a different dashboard use these same primitives?
+
+      ### Output
+
+      Write interface designs to `.ralph/specs/dashboard-interfaces.md`.
+
+      If the design violates Pike principles, publish `design.rejected` with feedback.
+      Otherwise publish `interfaces.ready`.
+
+  implementer:
+    name: "Builder"
+    description: "Implements one component at a time. Tests first."
+    triggers: ["interfaces.ready", "build.task"]
+    publishes: ["build.done", "build.blocked"]
+    default_publishes: "build.done"
+    instructions: |
+      ## BUILDER MODE
+
+      Implement the projection functions and query interfaces.
+
+      ### Process
+
+      1. **Pick one task** from `ralph tools task ready`
+      2. **Write the test first** (table-driven)
+      3. **Implement the function** (make the test pass)
+      4. **Run verification**: `go test ./... && go vet ./...`
+      5. **Commit**: one task, one commit
+
+      ### Implementation Guidelines
+
+      **Projection Functions:**
+
+      ```go
+      // Pure function. No side effects. No interfaces.
+      func StepInvocations(events []event.Event) []StepInvocation {
+          // Walk events, correlate started/completed/failed
+          // Calculate durations, extract attempt numbers
+          // ~30-50 lines of code
+      }
+      ```
+
+      **Table-Driven Tests:**
+
+      ```go
+      func TestStepInvocations(t *testing.T) {
+          tests := []struct {
+              name   string
+              events []event.Event
+              want   []StepInvocation
+          }{
+              {
+                  name: "single step completes",
+                  events: []event.Event{
+                      {Type: event.EventStepStarted, StepName: "validate", ...},
+                      {Type: event.EventStepCompleted, StepName: "validate", ...},
+                  },
+                  want: []StepInvocation{{StepName: "validate", Status: "completed", ...}},
+              },
+              // More cases...
+          }
+          for _, tt := range tests {
+              t.Run(tt.name, func(t *testing.T) {
+                  got := StepInvocations(tt.events)
+                  // assert
+              })
+          }
+      }
+      ```
+
+      ### DON'T
+
+      - ❌ Skip tests
+      - ❌ Add methods to Event or EventStore
+      - ❌ Import dashboard-specific packages into core
+      - ❌ Use mocks when you can use real data
+
+      ### Memory Recording
+
+      ```bash
+      ralph tools memory add "pattern: [what you learned]" -t pattern
+      ralph tools memory add "decision: [why you chose X over Y]" -t decision
+      ```
+
+  reviewer:
+    name: "Pike Reviewer"
+    description: "Reviews for simplicity and Go idioms. Channels Rob Pike."
+    triggers: ["build.done"]
+    publishes: ["review.approved", "review.changes_requested", "build.task"]
+    default_publishes: "review.approved"
+    instructions: |
+      ## REVIEWER MODE (Rob Pike Edition)
+
+      Review through Pike's eyes.
+
+      ### The Pike Checklist
+
+      1. **Is it simple?**
+         - Can you explain it in one sentence?
+         - Is there any cleverness that could be removed?
+         - "Simplicity is complicated" - did they find true simplicity?
+
+      2. **Is it clear?**
+         - Are names obvious? (No abbreviations, no cryptic suffixes)
+         - Does the code read like prose?
+         - Are there any comments that explain "what" instead of "why"?
+
+      3. **Is it composed?**
+         - Do small pieces combine into larger ones?
+         - Can you use parts independently?
+         - Are there any god objects or god functions?
+
+      4. **Does it respect boundaries?**
+         - Is event sourcing kept pure (no query concerns)?
+         - Is projection kept pure (no side effects)?
+         - Is the interface small?
+
+      5. **Is it Go?**
+         - Errors as values, not exceptions?
+         - No unnecessary abstractions?
+         - Would this fit in the standard library?
+
+      ### Red Flags
+
+      - ❌ More than 3 methods on an interface
+      - ❌ Application concepts in core packages
+      - ❌ Callbacks or channels where polling works
+      - ❌ "Framework" patterns (too much structure)
+      - ❌ Comments that repeat the code
+
+      ### Green Flags
+
+      - ✅ Pure functions
+      - ✅ Table-driven tests
+      - ✅ Errors wrapped with context
+      - ✅ Small interfaces (or no interfaces)
+      - ✅ Obvious names
+
+      ### Output
+
+      If issues found, create task and publish `build.task`:
+      ```bash
+      ralph tools task add "Fix: [specific issue]" -p 1
+      ralph emit "build.task" "review found issues: [summary]"
+      ```
+
+      If solid, publish `review.approved`.
+
+  integrator:
+    name: "Integration Verifier"
+    description: "Verifies the whole system works together. Final gate."
+    triggers: ["review.approved"]
+    publishes: ["integration.done", "build.task"]
+    instructions: |
+      ## INTEGRATOR MODE
+
+      Verify everything works together.
+
+      ### Verification Checklist
+
+      1. **All tests pass**
+         ```bash
+         go test ./...
+         ```
+
+      2. **No import cycles**
+         - project/ imports event/ only
+         - query/ imports event/ only
+         - Core packages don't import project/ or query/
+
+      3. **Example usage works**
+         Create a simple example showing:
+         - Get events from store
+         - Project to step invocations
+         - Project to child workflows
+         - Query runs (if implemented)
+
+      4. **Documentation exists**
+         - Each exported function has a doc comment
+         - Package doc explains the purpose
+         - Examples are runnable
+
+      ### Integration Test
+
+      ```go
+      func TestDashboardIntegration(t *testing.T) {
+          // Create workflow events
+          events := []event.Event{...}
+
+          // Project them
+          invocations := project.StepInvocations(events)
+          children := project.ChildWorkflows(events)
+          counts := project.StepCounts(events)
+
+          // All should work together
+          assert.Equal(t, counts.StepCount, len(invocations))
+      }
+      ```
+
+      ### Output
+
+      If issues found:
+      ```bash
+      ralph tools task add "Integration: [issue]" -p 1
+      ralph emit "build.task" "integration issues found"
+      ```
+
+      If all good, publish `integration.done`.
+
+  finalizer:
+    name: "Finalizer"
+    description: "Updates documentation and declares completion."
+    triggers: ["integration.done"]
+    publishes: []
+    instructions: |
+      ## FINALIZER MODE
+
+      Wrap up and document.
+
+      ### Update SKENE_DASHBOARD_GAPS.md
+
+      Transform from "gaps" to "solutions":
+
+      ```markdown
+      # Skene Dashboard Integration
+
+      ## Philosophy
+
+      Skene's core is an event-sourced execution engine.
+      Dashboard support is provided through composition, not modification.
+
+      ## Solution Summary
+
+      | Original Gap | Solution | Location |
+      |--------------|----------|----------|
+      | Run queries | query.RunLister interface | query/lister.go |
+      | Step invocations | project.StepInvocations | project/steps.go |
+      | Step counts | project.StepCounts | project/counts.go |
+      | Step logs | Out of scope (use slog) | N/A |
+      | Child workflows | project.ChildWorkflows | project/children.go |
+      | Entity correlation | Event.Metadata convention | docs |
+      | UI events | EventStore.LoadSince | Already exists |
+      | Retry from step | Future: Fork primitive | Not implemented |
+
+      ## Usage
+
+      [Examples of how to use each projection]
+
+      ## What We Didn't Do (And Why)
+
+      - Did not add batch methods to EventStore (implementation detail)
+      - Did not add entity fields to Event (application metadata)
+      - Did not add logging to events (separate concern)
+      - Did not add callbacks (polling is simpler)
+      ```
+
+      ### Verify All Tasks Closed
+
+      ```bash
+      ralph tools task list
+      ```
+
+      All tasks should be completed.
+
+      ### Commit Final Changes
+
+      ```bash
+      git add -A
+      git commit -m "Add dashboard support via projection functions
+
+      New packages:
+      - project/: Pure functions to transform events into dashboard views
+      - query/: Optional interfaces for store query extensions
+
+      Philosophy: Composition over modification. Keep core pure.
+
+      Co-Authored-By: Claude <noreply@anthropic.com>"
+      ```
+
+      ### Complete
+
+      DASHBOARD_SUPPORT_COMPLETE
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rob Pike's Greatest Hits (Reference for Agents)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# On Simplicity:
+#   "Simplicity is complicated."
+#   "Controlling complexity is the essence of computer programming."
+#
+# On Interfaces:
+#   "The bigger the interface, the weaker the abstraction."
+#   "Don't design with interfaces, discover them."
+#
+# On Copying:
+#   "A little copying is better than a little dependency."
+#
+# On Communication:
+#   "Don't communicate by sharing memory; share memory by communicating."
+#
+# On Clarity:
+#   "Clear is better than clever."
+#   "Debuggable code is more important than clever code."
+#
+# On Errors:
+#   "Errors are values."
+#   "Don't just check errors, handle them gracefully."
+#
+# On Design:
+#   "Design the data structures, and the code will follow."
+#   "Data dominates. If you've chosen the right data structures,
+#    the algorithms will be obvious."
+#
+# Applied to Skene:
+#   - Events are the data structure. Everything else is projection.
+#   - EventStore is small (5 methods). Keep it that way.
+#   - Dashboards have different needs. Projection functions let them
+#     transform the same events into different views.
+#   - Logs ≠ Events. Logs are debug output. Events are state transitions.
+#   - Polling > Callbacks. Simpler, no leaks, works everywhere.
+# ─────────────────────────────────────────────────────────────────────────────
