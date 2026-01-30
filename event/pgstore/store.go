@@ -109,9 +109,9 @@ func (s *Store) appendBatchInTx(ctx context.Context, tx pgx.Tx, events []event.E
 	batch := &pgx.Batch{}
 	for _, e := range events {
 		batch.Queue(`
-			INSERT INTO skene_events (id, run_id, sequence, version, type, data, metadata, timestamp)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		`, e.ID, e.RunID, e.Sequence, e.Version, string(e.Type), e.Data, e.Metadata, e.Timestamp)
+			INSERT INTO skene_events (id, run_id, sequence, version, type, step_name, data, output, metadata, timestamp)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		`, e.ID, e.RunID, e.Sequence, e.Version, string(e.Type), e.StepName, e.Data, e.Output, e.Metadata, e.Timestamp)
 	}
 
 	results := tx.SendBatch(ctx, batch)
@@ -161,7 +161,7 @@ type querier interface {
 // loadEvents is the internal implementation for loading events.
 func (s *Store) loadEvents(ctx context.Context, q querier, runID string, afterSequence int64) ([]event.Event, error) {
 	rows, err := q.Query(ctx, `
-		SELECT id, run_id, sequence, version, type, data, metadata, timestamp
+		SELECT id, run_id, sequence, version, type, step_name, data, output, metadata, timestamp
 		FROM skene_events
 		WHERE run_id = $1 AND sequence > $2
 		ORDER BY sequence ASC
@@ -175,10 +175,14 @@ func (s *Store) loadEvents(ctx context.Context, q querier, runID string, afterSe
 	for rows.Next() {
 		var e event.Event
 		var eventType string
-		if err := rows.Scan(&e.ID, &e.RunID, &e.Sequence, &e.Version, &eventType, &e.Data, &e.Metadata, &e.Timestamp); err != nil {
+		var stepName *string
+		if err := rows.Scan(&e.ID, &e.RunID, &e.Sequence, &e.Version, &eventType, &stepName, &e.Data, &e.Output, &e.Metadata, &e.Timestamp); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
 		e.Type = parseEventType(eventType)
+		if stepName != nil {
+			e.StepName = *stepName
+		}
 		events = append(events, e)
 	}
 
