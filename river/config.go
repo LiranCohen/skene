@@ -13,7 +13,8 @@ import (
 // Default configuration values.
 const (
 	// DefaultWorkers is the default number of worker goroutines.
-	DefaultWorkers = 0 // 0 means use runtime.NumCPU()
+	// Use -1 to auto-detect (runtime.NumCPU()), 0 for insert-only mode.
+	DefaultWorkers = -1
 
 	// DefaultJobTimeout is the default timeout for job execution.
 	DefaultJobTimeout = 30 * time.Second
@@ -56,7 +57,8 @@ type Config struct {
 	Logger Logger
 
 	// Workers is the number of worker goroutines for processing jobs.
-	// If zero or negative, defaults to runtime.NumCPU().
+	// If zero, runs in insert-only mode (no job processing).
+	// If negative, defaults to runtime.NumCPU().
 	Workers int
 
 	// JobTimeout is the maximum duration for a single job execution.
@@ -84,10 +86,13 @@ func (c *Config) Validate() error {
 }
 
 // withDefaults returns a copy of the config with default values applied.
+// Note: Workers=0 means insert-only mode and is preserved.
 func (c *Config) withDefaults() Config {
 	cfg := *c
 
-	if cfg.Workers <= 0 {
+	// Workers=0 means insert-only mode, preserve it
+	// Workers<0 means use default (NumCPU)
+	if cfg.Workers < 0 {
 		cfg.Workers = runtime.NumCPU()
 	}
 	if cfg.JobTimeout <= 0 {
