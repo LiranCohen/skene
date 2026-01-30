@@ -159,9 +159,9 @@ func TestWaitForSignal_FirstExecution(t *testing.T) {
 		t.Fatalf("Replay() error = %v", err)
 	}
 
-	// Workflow should fail because step returns ErrReplayWaiting
-	if output.Result != ReplayFailed {
-		t.Errorf("Result = %v, want %v", output.Result, ReplayFailed)
+	// Workflow should be waiting for the signal
+	if output.Result != ReplayWaiting {
+		t.Errorf("Result = %v, want %v", output.Result, ReplayWaiting)
 	}
 
 	// Verify signal.waiting event was generated
@@ -372,9 +372,16 @@ func TestWaitForSignal_ReplayStillWaiting(t *testing.T) {
 		t.Fatalf("Replay() error = %v", err)
 	}
 
-	// Workflow should fail because still waiting (ErrReplayWaiting from step)
-	if output.Result != ReplayFailed {
-		t.Errorf("Result = %v, want %v", output.Result, ReplayFailed)
+	// Workflow should be waiting (still waiting for signal)
+	if output.Result != ReplayWaiting {
+		t.Errorf("Result = %v, want %v", output.Result, ReplayWaiting)
+	}
+
+	// Verify waiting signals list
+	if len(output.WaitingForSignals) != 1 {
+		t.Errorf("WaitingForSignals length = %d, want 1", len(output.WaitingForSignals))
+	} else if output.WaitingForSignals[0].SignalName != "approval" {
+		t.Errorf("WaitingForSignals[0].SignalName = %q, want %q", output.WaitingForSignals[0].SignalName, "approval")
 	}
 }
 
@@ -438,7 +445,8 @@ func TestWaitForSignalTyped(t *testing.T) {
 }
 
 func TestWaitForSignalTyped_InvalidPayload(t *testing.T) {
-	// Create history with signal received but invalid payload
+	// Create history with signal received but payload that doesn't match expected type
+	// Use valid JSON that cannot unmarshal to ApprovalData (wrong structure)
 	events := []event.Event{
 		makeEvent(1, event.EventWorkflowStarted, "", event.WorkflowStartedData{
 			WorkflowName: "signal-typed-test",
@@ -451,7 +459,7 @@ func TestWaitForSignalTyped_InvalidPayload(t *testing.T) {
 		}, nil),
 		makeEvent(3, event.EventSignalReceived, "", event.SignalReceivedData{
 			SignalName: "approval",
-			Payload:    json.RawMessage(`invalid json`),
+			Payload:    json.RawMessage(`[1, 2, 3]`), // Array cannot unmarshal to struct
 		}, nil),
 	}
 

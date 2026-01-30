@@ -323,8 +323,9 @@ func (r *Replayer) Replay(ctx context.Context) (*ReplayOutput, error) {
 			return nil, fmt.Errorf("execute parallel: %w", err)
 		}
 
-		// Process results: collect events and check for failures
+		// Process results: collect events and check for failures/waiting
 		var failedResult *stepResult
+		var isWaiting bool
 		for i := range results {
 			result := &results[i]
 
@@ -334,8 +335,11 @@ func (r *Replayer) Replay(ctx context.Context) (*ReplayOutput, error) {
 			}
 
 			if result.err != nil {
-				// Record first failure for reporting
-				if failedResult == nil {
+				if errors.Is(result.err, ErrReplayWaiting) {
+					// Step is waiting for signal - not a failure
+					isWaiting = true
+				} else if failedResult == nil {
+					// Record first failure for reporting
 					failedResult = result
 				}
 			} else {
@@ -344,6 +348,16 @@ func (r *Replayer) Replay(ctx context.Context) (*ReplayOutput, error) {
 				finalOutput = result.output
 				lastStepName = result.stepName
 			}
+		}
+
+		// If any step is waiting for a signal, return waiting status
+		if isWaiting {
+			return &ReplayOutput{
+				Result:            ReplayWaiting,
+				WaitingForSignals: r.getWaitingSignals(),
+				NewEvents:         r.newEvents,
+				NextSequence:      r.nextSequence,
+			}, nil
 		}
 
 		// If any step failed, return failure (fail-fast already cancelled others)
@@ -533,6 +547,13 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 				Output:   outputJSON,
 			})
 
+			return result
+		}
+
+		// Check for replay waiting (step is pausing for signal)
+		// This is not a failure - don't emit step.failed, don't retry
+		if errors.Is(err, ErrReplayWaiting) {
+			result.err = err
 			return result
 		}
 
