@@ -298,3 +298,60 @@ func (d *DAG) GetNode(name string) (*DAGNode, bool) {
 	node, ok := d.nodes[name]
 	return node, ok
 }
+
+// StepDef represents a step definition for export/visualization.
+type StepDef struct {
+	Name         string    `json:"name"`
+	Dependencies []string  `json:"dependencies"`
+	IsBranch     bool      `json:"isBranch"`
+	BranchCases  []CaseDef `json:"branchCases,omitempty"`
+}
+
+// CaseDef represents a branch case definition.
+type CaseDef struct {
+	Value     string `json:"value"`     // Case value (e.g., "artificial", "real_upload")
+	StepName  string `json:"stepName"`  // Step executed for this case
+	IsDefault bool   `json:"isDefault"` // True if this is the default case
+}
+
+// GetStepDefs returns step definitions for all steps in the workflow.
+// This includes branch case information for visualization.
+func (w *WorkflowDef) GetStepDefs() []StepDef {
+	defs := make([]StepDef, 0, len(w.steps))
+
+	for _, step := range w.steps {
+		def := StepDef{
+			Name:         step.Name(),
+			Dependencies: step.Dependencies(),
+		}
+
+		// Check if this is a branch by looking at the underlying adapter
+		if adapter, ok := step.(*stepNodeAdapter); ok {
+			if branch, ok := adapter.configured.step.(*Branch); ok {
+				def.IsBranch = true
+				def.BranchCases = make([]CaseDef, 0)
+
+				// Add all cases
+				for value, caseStep := range branch.cases {
+					def.BranchCases = append(def.BranchCases, CaseDef{
+						Value:    value,
+						StepName: caseStep.Name(),
+					})
+				}
+
+				// Add default case if present
+				if branch.defaultStep != nil {
+					def.BranchCases = append(def.BranchCases, CaseDef{
+						Value:     "default",
+						StepName:  branch.defaultStep.Name(),
+						IsDefault: true,
+					})
+				}
+			}
+		}
+
+		defs = append(defs, def)
+	}
+
+	return defs
+}
