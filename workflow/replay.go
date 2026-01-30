@@ -474,6 +474,7 @@ func (r *Replayer) executeParallel(ctx context.Context, steps []StepNode) ([]ste
 // executeStepWithEvents executes a step and returns its result with events.
 // This method is safe for concurrent execution.
 // It supports retry based on the step's retry policy.
+// For branches, events are emitted with the case step name and branch context.
 func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) stepResult {
 	stepName := step.Name()
 	result := stepResult{
@@ -493,6 +494,39 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 		stepConfig = configurable.Config()
 	}
 
+	// Check if this is a branch step - if so, we need to determine the case step name
+	// and emit events with that name instead of the branch name
+	var branchName string
+	var caseValue string
+	var eventStepName string = stepName // Default to step name
+
+	// Branches are wrapped in stepNodeAdapter, so we need to unwrap
+	if adapter, ok := step.(*stepNodeAdapter); ok {
+		if branch, ok := adapter.configured.step.(*Branch); ok {
+			branchName = stepName // The branch name
+
+			// Get the choice - first check history (replay mode), then evaluate selector
+			// We need to peek at what choice will be made to set up the event step name
+			choice, recorded := r.history.GetBranchChoice(branchName)
+			if !recorded {
+				// Fresh execution - we need to evaluate the selector to know the choice
+				// Build a temporary execution context to evaluate the selector
+				tmpCtx := r.buildExecutionContext(ctx)
+				wctx := &workflowContextAdapter{executionContext: tmpCtx}
+				choice = branch.selector(wctx)
+
+				// Record the choice NOW so the branch won't re-evaluate the selector
+				// This ensures selector is only called once per execution
+				r.RecordBranchEvaluated(branchName, choice)
+			}
+			caseValue = choice
+			eventStepName = branch.GetCaseStepName(choice)
+			if eventStepName == "" {
+				eventStepName = stepName // Fallback to branch name if no case found
+			}
+		}
+	}
+
 	// Retry loop
 	attempt := 1
 	// maxAttempts is used implicitly via ShouldRetry check
@@ -505,12 +539,15 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 		}
 
 		// Emit step.started event for this attempt
+		// For branches, use case step name and include branch context
 		startedData, _ := json.Marshal(event.StepStartedData{
-			Attempt: attempt,
+			Attempt:    attempt,
+			BranchName: branchName,
+			CaseValue:  caseValue,
 		})
 		result.events = append(result.events, event.Event{
 			Type:     event.EventStepStarted,
-			StepName: stepName,
+			StepName: eventStepName,
 			Data:     startedData,
 		})
 
@@ -533,18 +570,28 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 
 		if err == nil {
 			// Success - cache output and return
+			// For branches, cache under the case step name so BranchOutput can retrieve it
+			cacheKey := stepName
+			if branchName != "" {
+				cacheKey = eventStepName
+			}
 			r.outputMu.Lock()
-			r.outputCache[stepName] = output
+			r.outputCache[cacheKey] = output
 			r.outputMu.Unlock()
 
 			result.output = output
 
-			// Create step.completed event
+			// Create step.completed event with branch context if applicable
 			outputJSON, _ := json.Marshal(output)
+			completedData, _ := json.Marshal(event.StepCompletedData{
+				BranchName: branchName,
+				CaseValue:  caseValue,
+			})
 			result.events = append(result.events, event.Event{
 				Type:     event.EventStepCompleted,
-				StepName: stepName,
+				StepName: eventStepName,
 				Output:   outputJSON,
+				Data:     completedData,
 			})
 
 			return result
@@ -560,15 +607,17 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 		// Step failed - check if we should retry
 		willRetry := stepConfig.RetryPolicy != nil && stepConfig.RetryPolicy.ShouldRetry(attempt, err)
 
-		// Create step.failed event
+		// Create step.failed event with branch context if applicable
 		failedData, _ := json.Marshal(event.StepFailedData{
-			Error:     err.Error(),
-			Attempt:   attempt,
-			WillRetry: willRetry,
+			Error:      err.Error(),
+			Attempt:    attempt,
+			WillRetry:  willRetry,
+			BranchName: branchName,
+			CaseValue:  caseValue,
 		})
 		result.events = append(result.events, event.Event{
 			Type:     event.EventStepFailed,
-			StepName: stepName,
+			StepName: eventStepName,
 			Data:     failedData,
 		})
 
@@ -769,7 +818,12 @@ func (r *Replayer) emitWorkflowCompleted(output any) error {
 // RecordBranchEvaluated appends a branch.evaluated event.
 // Returns the emitted event.
 // Thread-safe for use from concurrent goroutines.
+// Also updates the history index so subsequent lookups within the same replay find the choice.
 func (r *Replayer) RecordBranchEvaluated(branchName, choice string) event.Event {
+	// Update history index so subsequent lookups within this replay find the choice
+	// This prevents the branch from re-evaluating the selector
+	r.history.RecordBranchChoice(branchName, choice)
+
 	data, _ := json.Marshal(event.BranchEvaluatedData{
 		BranchName: branchName,
 		Choice:     choice,

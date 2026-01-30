@@ -29,19 +29,25 @@ type WorkflowCancelledData struct {
 
 // StepStartedData is the payload for step.started events.
 type StepStartedData struct {
-	Attempt int `json:"attempt,omitempty"`
+	Attempt    int    `json:"attempt,omitempty"`
+	BranchName string `json:"branch_name,omitempty"` // Parent branch name (if executing a branch case)
+	CaseValue  string `json:"case_value,omitempty"`  // Which case was chosen (if executing a branch case)
 }
 
 // StepCompletedData is the payload for step.completed events.
 type StepCompletedData struct {
-	Duration time.Duration `json:"duration_ns"`
+	Duration   time.Duration `json:"duration_ns"`
+	BranchName string        `json:"branch_name,omitempty"` // Parent branch name (if executing a branch case)
+	CaseValue  string        `json:"case_value,omitempty"`  // Which case was chosen (if executing a branch case)
 }
 
 // StepFailedData is the payload for step.failed events.
 type StepFailedData struct {
-	Error     string `json:"error"`
-	Attempt   int    `json:"attempt"`
-	WillRetry bool   `json:"will_retry"`
+	Error      string `json:"error"`
+	Attempt    int    `json:"attempt"`
+	WillRetry  bool   `json:"will_retry"`
+	BranchName string `json:"branch_name,omitempty"` // Parent branch name (if executing a branch case)
+	CaseValue  string `json:"case_value,omitempty"`  // Which case was chosen (if executing a branch case)
 }
 
 // BranchEvaluatedData is the payload for branch.evaluated events.

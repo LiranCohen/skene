@@ -278,3 +278,10 @@ func (h *History) GetChildError(childRunID string) (string, bool) {
 	errMsg, ok := h.childErrors[childRunID]
 	return errMsg, ok
 }
+
+// RecordBranchChoice adds a branch choice to the history.
+// This is used by the Replayer to record choices during execution
+// so subsequent lookups within the same replay find them.
+func (h *History) RecordBranchChoice(branchName, choice string) {
+	h.branches[branchName] = choice
+}

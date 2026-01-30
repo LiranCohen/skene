@@ -168,3 +168,39 @@ func BranchOutput[T any](ctx Context, branch *Branch) (T, bool) {
 type branchOutputAccessor interface {
 	getBranchChoice(branchName string) (string, bool)
 }
+
+// BranchExecutionInfo contains information about a branch execution.
+// This is used by the Replayer to emit events with the correct step name.
+type BranchExecutionInfo struct {
+	BranchName   string // The branch's name
+	CaseValue    string // The case that was chosen
+	CaseStepName string // The step name of the chosen case
+}
+
+// branchStep is an internal interface implemented by Branch.
+// It allows the Replayer to detect branches and handle them specially.
+type branchStep interface {
+	// IsBranch returns true if this step is a branch.
+	IsBranch() bool
+
+	// GetCaseStepName returns the name of the step that would be executed for a given case.
+	// If the case doesn't exist, returns the default step name or empty string.
+	GetCaseStepName(choice string) string
+}
+
+// IsBranch returns true (Branch implements branchStep).
+func (b *Branch) IsBranch() bool {
+	return true
+}
+
+// GetCaseStepName returns the name of the step that would be executed for a given case.
+func (b *Branch) GetCaseStepName(choice string) string {
+	step := b.cases[choice]
+	if step == nil {
+		step = b.defaultStep
+	}
+	if step == nil {
+		return ""
+	}
+	return step.Name()
+}
