@@ -73,13 +73,19 @@ func (s *Store) appendBatchInTx(ctx context.Context, tx pgx.Tx, events []event.E
 
 	// Validate sequences for each run
 	for runID, runEvents := range eventsByRun {
-		// Get current last sequence with row lock
+		// Use advisory lock to prevent concurrent inserts for the same run
+		// This avoids the PostgreSQL limitation of FOR UPDATE with aggregates
+		_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, runID)
+		if err != nil {
+			return fmt.Errorf("acquire advisory lock: %w", err)
+		}
+
+		// Get current last sequence (advisory lock protects concurrent access)
 		var lastSeq int64
-		err := tx.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
 			SELECT COALESCE(MAX(sequence), 0)
 			FROM skene_events
 			WHERE run_id = $1
-			FOR UPDATE
 		`, runID).Scan(&lastSeq)
 		if err != nil {
 			return fmt.Errorf("get last sequence: %w", err)
