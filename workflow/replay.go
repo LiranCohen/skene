@@ -139,6 +139,10 @@ type ReplayerConfig struct {
 
 	// Logger for replay engine logging.
 	Logger Logger
+
+	// OnStepEmit is called after a step completes successfully if its output
+	// implements StepEmitter. Receives context, step name, and emission data.
+	OnStepEmit func(ctx context.Context, stepName string, data any)
 }
 
 // ReplayOutput contains the result of a replay operation.
@@ -593,6 +597,15 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 				Output:   outputJSON,
 				Data:     completedData,
 			})
+
+			// Check for custom emission
+			if emitter, ok := output.(StepEmitter); ok {
+				if emitData := emitter.GetStepEmission(); emitData != nil {
+					if r.config.OnStepEmit != nil {
+						r.config.OnStepEmit(ctx, eventStepName, emitData)
+					}
+				}
+			}
 
 			return result
 		}

@@ -15,6 +15,14 @@ type AnyStep interface {
 	Name() string
 }
 
+// StepEmitter is implemented by step outputs that want to emit custom data
+// after the step completes successfully. When a step output implements this
+// interface and returns non-nil data, the OnStepEmit callback in ReplayerConfig
+// will be invoked.
+type StepEmitter interface {
+	GetStepEmission() any
+}
+
 // executableStep extends AnyStep with an Execute method.
 // This is used internally by the Replayer.
 type executableStep interface {

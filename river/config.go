@@ -68,6 +68,10 @@ type Config struct {
 	// ShutdownTimeout is the maximum duration to wait for graceful shutdown.
 	// If zero, defaults to DefaultShutdownTimeout (30s).
 	ShutdownTimeout time.Duration
+
+	// OnStepEmit is called after a step completes successfully if its output
+	// implements workflow.StepEmitter. Used for publishing custom events (SSE, etc.).
+	OnStepEmit func(ctx context.Context, stepName string, data any)
 }
 
 // Validate checks that the configuration is valid.

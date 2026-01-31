@@ -73,11 +73,12 @@ func (w *workflowWorker) Work(ctx context.Context, job *river.Job[WorkflowJobArg
 
 	// Create replayer
 	replayer := workflow.NewReplayer(workflow.ReplayerConfig{
-		Workflow: def,
-		History:  history,
-		RunID:    args.RunID,
-		Input:    workflowInput,
-		Logger:   workflowLoggerAdapter{r.logger},
+		Workflow:   def,
+		History:    history,
+		RunID:      args.RunID,
+		Input:      workflowInput,
+		Logger:     workflowLoggerAdapter{r.logger},
+		OnStepEmit: r.config.OnStepEmit,
 	})
 
 	// Execute replay
