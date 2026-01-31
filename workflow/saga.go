@@ -77,7 +77,7 @@ func (r *Replayer) runCompensation(ctx context.Context, failedStep string, compl
 	}
 
 	// Build execution context for compensation
-	execCtx := r.buildExecutionContext(ctx)
+	execCtx := r.buildExecutionContext(ctx, "compensation")
 
 	// Execute compensation in order (already reversed)
 	var compensationErrors []error

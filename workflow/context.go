@@ -16,6 +16,11 @@ type Context interface {
 
 	// WorkflowName returns the workflow name.
 	WorkflowName() string
+
+	// Emit sends data to the OnStepEmit callback during step execution.
+	// This is fire-and-forget - emissions don't affect control flow.
+	// If OnStepEmit is not configured, this is a no-op.
+	Emit(data any)
 }
 
 // GetInput retrieves the workflow input with type safety.
@@ -94,6 +99,11 @@ func (c *workflowContext) RunID() string {
 // WorkflowName returns the workflow name.
 func (c *workflowContext) WorkflowName() string {
 	return c.workflowName
+}
+
+// Emit is a no-op for basic workflowContext (used in tests without replayer).
+func (c *workflowContext) Emit(data any) {
+	// No-op: workflowContext doesn't have access to replayer
 }
 
 // getInput returns the raw workflow input JSON.

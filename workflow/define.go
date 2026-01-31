@@ -105,6 +105,12 @@ func (w *workflowContextAdapter) recordBranchChoice(branchName, choice string) {
 	w.executionContext.recordBranchChoice(branchName, choice)
 }
 
+// Emit sends data to the OnStepEmit callback during step execution.
+// This is fire-and-forget - emissions don't affect control flow.
+func (w *workflowContextAdapter) Emit(data any) {
+	w.executionContext.Emit(data)
+}
+
 // Define creates a workflow from steps with explicit dependencies.
 // Steps without After() calls have no dependencies and can run immediately.
 // Returns an error if validation fails (cycles, duplicates, missing deps).

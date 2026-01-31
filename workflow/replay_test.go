@@ -2359,3 +2359,232 @@ func TestReplayer_StepWithTimeoutAndRetry(t *testing.T) {
 		t.Errorf("attempts = %d, want 2", attempts)
 	}
 }
+
+// =============================================================================
+// ctx.Emit() Tests
+// =============================================================================
+
+func TestReplayer_EmitCallsOnStepEmit(t *testing.T) {
+	type EmitRecord struct {
+		StepName string
+		Data     any
+	}
+	var emissions []EmitRecord
+	var mu sync.Mutex
+
+	step1 := NewStep("step1", func(ctx Context) (map[string]string, error) {
+		ctx.Emit(map[string]string{"event": "step1_started"})
+		ctx.Emit(map[string]string{"event": "step1_progress", "value": "50%"})
+		return map[string]string{"result": "done"}, nil
+	})
+
+	wf := Define("test-emit", step1.After())
+
+	r := NewReplayer(ReplayerConfig{
+		Workflow: wf,
+		RunID:    "run-emit",
+		Input:    map[string]string{},
+		OnStepEmit: func(ctx context.Context, stepName string, data any) {
+			mu.Lock()
+			emissions = append(emissions, EmitRecord{StepName: stepName, Data: data})
+			mu.Unlock()
+		},
+	})
+
+	output, err := r.Replay(context.Background())
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+
+	if output.Result != ReplayCompleted {
+		t.Errorf("Result = %v, want ReplayCompleted", output.Result)
+	}
+
+	// Should have 2 emissions from ctx.Emit()
+	if len(emissions) != 2 {
+		t.Fatalf("emissions count = %d, want 2", len(emissions))
+	}
+
+	// Verify step name is correct
+	for i, e := range emissions {
+		if e.StepName != "step1" {
+			t.Errorf("emission[%d].StepName = %q, want %q", i, e.StepName, "step1")
+		}
+	}
+
+	// Verify data
+	first := emissions[0].Data.(map[string]string)
+	if first["event"] != "step1_started" {
+		t.Errorf("first emission event = %q, want %q", first["event"], "step1_started")
+	}
+
+	second := emissions[1].Data.(map[string]string)
+	if second["event"] != "step1_progress" {
+		t.Errorf("second emission event = %q, want %q", second["event"], "step1_progress")
+	}
+}
+
+func TestReplayer_EmitWithNilOnStepEmitIsNoOp(t *testing.T) {
+	step1 := NewStep("step1", func(ctx Context) (map[string]string, error) {
+		// This should not panic even without OnStepEmit configured
+		ctx.Emit(map[string]string{"event": "test"})
+		ctx.Emit(nil)
+		return map[string]string{"result": "done"}, nil
+	})
+
+	wf := Define("test-emit-nil", step1.After())
+
+	r := NewReplayer(ReplayerConfig{
+		Workflow: wf,
+		RunID:    "run-emit-nil",
+		Input:    map[string]string{},
+		// OnStepEmit not configured
+	})
+
+	output, err := r.Replay(context.Background())
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+
+	if output.Result != ReplayCompleted {
+		t.Errorf("Result = %v, want ReplayCompleted", output.Result)
+	}
+}
+
+func TestReplayer_EmitWithCorrectStepNameInParallel(t *testing.T) {
+	type EmitRecord struct {
+		StepName string
+		Data     string
+	}
+	var emissions []EmitRecord
+	var mu sync.Mutex
+
+	step1 := NewStep("step1", func(ctx Context) (map[string]string, error) {
+		ctx.Emit("from_step1")
+		return map[string]string{}, nil
+	})
+
+	step2 := NewStep("step2", func(ctx Context) (map[string]string, error) {
+		ctx.Emit("from_step2")
+		return map[string]string{}, nil
+	})
+
+	wf := Define("test-emit-parallel", step1.After(), step2.After())
+
+	r := NewReplayer(ReplayerConfig{
+		Workflow: wf,
+		RunID:    "run-emit-parallel",
+		Input:    map[string]string{},
+		OnStepEmit: func(ctx context.Context, stepName string, data any) {
+			mu.Lock()
+			emissions = append(emissions, EmitRecord{StepName: stepName, Data: data.(string)})
+			mu.Unlock()
+		},
+	})
+
+	output, err := r.Replay(context.Background())
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+
+	if output.Result != ReplayCompleted {
+		t.Errorf("Result = %v, want ReplayCompleted", output.Result)
+	}
+
+	// Should have 2 emissions (one from each step)
+	if len(emissions) != 2 {
+		t.Fatalf("emissions count = %d, want 2", len(emissions))
+	}
+
+	// Verify each emission has the correct step name
+	step1Found := false
+	step2Found := false
+	for _, e := range emissions {
+		if e.StepName == "step1" && e.Data == "from_step1" {
+			step1Found = true
+		}
+		if e.StepName == "step2" && e.Data == "from_step2" {
+			step2Found = true
+		}
+	}
+
+	if !step1Found {
+		t.Error("emission from step1 not found")
+	}
+	if !step2Found {
+		t.Error("emission from step2 not found")
+	}
+}
+
+func TestReplayer_EmitAndStepEmitterBothWork(t *testing.T) {
+	// Test that both ctx.Emit() and StepEmitter work together
+	type EmitRecord struct {
+		StepName string
+		Data     any
+	}
+	var emissions []EmitRecord
+	var mu sync.Mutex
+
+	// Create a step output that implements StepEmitter
+	type OutputWithEmitter struct {
+		Result string `json:"result"`
+		emit   any
+	}
+
+	step1 := NewStep("step1", func(ctx Context) (StepEmitter, error) {
+		// Mid-step emission
+		ctx.Emit(map[string]string{"type": "mid_step"})
+
+		// Return with post-step emission via StepEmitter
+		return &testStepEmitter{output: "done", emitData: map[string]string{"type": "post_step"}}, nil
+	})
+
+	wf := Define("test-emit-both", step1.After())
+
+	r := NewReplayer(ReplayerConfig{
+		Workflow: wf,
+		RunID:    "run-emit-both",
+		Input:    map[string]string{},
+		OnStepEmit: func(ctx context.Context, stepName string, data any) {
+			mu.Lock()
+			emissions = append(emissions, EmitRecord{StepName: stepName, Data: data})
+			mu.Unlock()
+		},
+	})
+
+	output, err := r.Replay(context.Background())
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+
+	if output.Result != ReplayCompleted {
+		t.Errorf("Result = %v, want ReplayCompleted", output.Result)
+	}
+
+	// Should have 2 emissions: one mid-step, one post-step
+	if len(emissions) != 2 {
+		t.Fatalf("emissions count = %d, want 2", len(emissions))
+	}
+
+	// First should be mid-step
+	first := emissions[0].Data.(map[string]string)
+	if first["type"] != "mid_step" {
+		t.Errorf("first emission type = %q, want %q", first["type"], "mid_step")
+	}
+
+	// Second should be post-step
+	second := emissions[1].Data.(map[string]string)
+	if second["type"] != "post_step" {
+		t.Errorf("second emission type = %q, want %q", second["type"], "post_step")
+	}
+}
+
+// testStepEmitter is a helper type that implements StepEmitter for testing
+type testStepEmitter struct {
+	output   string
+	emitData any
+}
+
+func (e *testStepEmitter) GetStepEmission() any {
+	return e.emitData
+}

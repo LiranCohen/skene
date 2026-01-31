@@ -140,8 +140,10 @@ type ReplayerConfig struct {
 	// Logger for replay engine logging.
 	Logger Logger
 
-	// OnStepEmit is called after a step completes successfully if its output
-	// implements StepEmitter. Receives context, step name, and emission data.
+	// OnStepEmit is called in two scenarios:
+	// 1. During step execution when ctx.Emit(data) is called (mid-step emission)
+	// 2. After step completion if output implements StepEmitter (post-step emission)
+	// Receives context, step name, and emission data.
 	OnStepEmit func(ctx context.Context, stepName string, data any)
 }
 
@@ -515,7 +517,7 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 			if !recorded {
 				// Fresh execution - we need to evaluate the selector to know the choice
 				// Build a temporary execution context to evaluate the selector
-				tmpCtx := r.buildExecutionContext(ctx)
+				tmpCtx := r.buildExecutionContext(ctx, branchName)
 				wctx := &workflowContextAdapter{executionContext: tmpCtx}
 				choice = branch.selector(wctx)
 
@@ -563,7 +565,7 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 		}
 
 		// Build execution context with the step context (includes timeout)
-		execCtx := r.buildExecutionContext(stepCtx)
+		execCtx := r.buildExecutionContext(stepCtx, eventStepName)
 
 		// Execute the step
 		output, err := step.Execute(stepCtx, execCtx)
@@ -655,11 +657,12 @@ func (r *Replayer) executeStepWithEvents(ctx context.Context, step StepNode) ste
 }
 
 // buildExecutionContext creates an execution context with access to prior outputs.
-func (r *Replayer) buildExecutionContext(ctx context.Context) *executionContext {
+func (r *Replayer) buildExecutionContext(ctx context.Context, stepName string) *executionContext {
 	return &executionContext{
 		ctx:          ctx,
 		runID:        r.config.RunID,
 		workflowName: r.config.Workflow.Name(),
+		stepName:     stepName,
 		input:        r.config.Input,
 		history:      r.history,
 		outputCache:  r.outputCache,
@@ -675,6 +678,7 @@ type executionContext struct {
 	ctx          context.Context
 	runID        string
 	workflowName string
+	stepName     string         // Current step name for emissions
 	input        any
 	history      *History
 	outputCache  map[string]any
@@ -760,6 +764,16 @@ func (e *executionContext) getBranchChoice(branchName string) (string, bool) {
 // recordBranchChoice records a branch choice by emitting a branch.evaluated event.
 func (e *executionContext) recordBranchChoice(branchName, choice string) {
 	e.replayer.RecordBranchEvaluated(branchName, choice)
+}
+
+// Emit sends data to the OnStepEmit callback if configured.
+// This is fire-and-forget - emissions don't affect control flow.
+// Implements Context.Emit().
+func (e *executionContext) Emit(data any) {
+	if e.replayer == nil || e.replayer.config.OnStepEmit == nil {
+		return
+	}
+	e.replayer.config.OnStepEmit(e.ctx, e.stepName, data)
 }
 
 // emitEvent appends an event to the new events list and returns the populated event.
